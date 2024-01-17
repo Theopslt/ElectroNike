@@ -16,22 +16,13 @@
 #define REVEIL_BUZZER 6
 #define PM_AM_SWITCH 2
 #define REVEIL_BUTTON 8
-#define LED_ALARM 10
 
-#define NOMBRE_TONE_REVEIL 6
 
 unsigned long previousMinuteEdit = 0;
 
 unsigned reveil = 1;
 unsigned long previousReveilEdit = 0;
 unsigned long previousReveilStart = 0;
-
-unsigned alarmTonalites[NOMBRE_TONE_REVEIL] = {100, 100, 200, 500, 100, 100};
-unsigned alarmTemps[NOMBRE_TONE_REVEIL * 2] = {100, 100, 100, 500, 100, 100, 100, 100, 100, 100, 100, 100};
-unsigned alarmToneIndex = 0;
-unsigned alarmTempsIndex = 0;
-unsigned long alarmPreviousMillis = 0;
-unsigned alarmState = 0;
 
 MD_Parola myDisplay = MD_Parola(HARDWARE_TYPE, DATA_PIN, CLK_PIN, CS_PIN, MAX_DEVICES);
 
@@ -41,20 +32,18 @@ DateTime reveilTime;
 
 bool formatHeure24 = true; // Variable pour suivre le format d'heure
 bool lastSwitchState = LOW; // Suivre l'état précédent du bouton
+unsigned long alarmPreviousMillis = 0;
+unsigned alarmState = 0;
+ int switchState = 0;
 
 void updateLedMatrix(DateTime time) {
   char heure[10];
-
-  int switchState = digitalRead(PM_AM_SWITCH);
 
   if (switchState != lastSwitchState) {
     // Si l'état du bouton a changé, basculez le format de l'heure
     formatHeure24 = !formatHeure24;
     delay(200); // Délai pour éviter les rebonds
   }
-
-  lastSwitchState = switchState;
-
   if (formatHeure24) {
     if (time.hour() >= 12) {
       digitalWrite(LED_AM, LOW);
@@ -90,41 +79,20 @@ void alarm(DateTime now, DateTime reveil, unsigned long timerDuration, unsigned 
   if (!timerActive && now.hour() == reveil.hour() && now.minute() == reveil.minute()) {
     timerStartMillis = millis();
     timerActive = true;
-    digitalWrite(LED_ALARM, HIGH);
+    digitalWrite(REVEIL_BUZZER, HIGH);
+    alarmState = 1;
   }
 
-  if (timerActive && millis() - timerStartMillis >= timerDuration) {
-    tone(REVEIL_BUZZER, alarmTonalites[alarmToneIndex]);
-    alarmState = !alarmState;
+  if (timerActive && millis() - alarmPreviousMillis >= timerDuration) {
+    digitalWrite(REVEIL_BUZZER, !digitalRead(REVEIL_BUZZER));
     alarmPreviousMillis = millis();
-    previousReveilStart = millis();
-    timerActive = false;
-    alarmOnMillis = millis();
   }
 
-  if (alarmState == 1 && millis() - alarmPreviousMillis >= alarmTemps[alarmTempsIndex]) {
-    Serial.println("Here3?");
-    if (alarmToneIndex * 2 == alarmTempsIndex) {
-      noTone(REVEIL_BUZZER);
-    } else {
-      alarmToneIndex++;
-      tone(REVEIL_BUZZER, alarmTonalites[alarmToneIndex]);
-    }
-
-    if (alarmToneIndex == NOMBRE_TONE_REVEIL && alarmTempsIndex == NOMBRE_TONE_REVEIL * 2) {
-      alarmToneIndex = 0;
-      alarmTempsIndex = 0;
-      alarmState = !alarmState;
-    }
-
-    alarmPreviousMillis = millis();
-    alarmTempsIndex++;
-  }
-
-  // Éteindre l'alarme après 10 secondes
-  if (alarmState == 1 && millis() - alarmOnMillis >= alarmDuration) {
-    digitalWrite(LED_ALARM, LOW);
-    alarmState = !alarmState;
+  // Éteindre l'alarme après 20 secondes
+  if (alarmState == 1 && millis() - timerStartMillis >= alarmDuration) {
+    digitalWrite(REVEIL_BUZZER, LOW);
+    alarmState = 0;
+    timerActive = false; // Réinitialiser l'état du minuteur
   }
 }
 
@@ -135,6 +103,7 @@ void toggleReveil() {
     reveilTime = DateTime(2023, 1, 8, 21, 35);
   }
 }
+
 
 void setup() {
   Serial.begin(2400);
@@ -154,7 +123,7 @@ void setup() {
   pinMode(PM_AM_SWITCH, INPUT);
   pinMode(REVEIL_BUTTON, INPUT);
   pinMode(REVEIL_BUZZER, OUTPUT);
-  pinMode(LED_ALARM, OUTPUT);
+
 
   attachInterrupt(digitalPinToInterrupt(REVEIL_BUTTON), toggleReveil, RISING);
 
@@ -179,16 +148,16 @@ ISR(TIMER1_COMPA_vect) {
 }
 
 void loop() {
-  DateTime now = RTC.now();
 
+  DateTime now = RTC.now();
+  switchState=digitalRead(PM_AM_SWITCH);
   if (millis() - previousMinuteEdit >= 20000) {
     updateLedMatrix(now);
   }
 
-  DateTime reveil = DateTime(now.year(), now.month(), now.day(), 19, 30, 0);
+  DateTime reveil = DateTime(now.year(), now.month(), now.day(), 18, 31, 0);
 
-  unsigned long timerDuration = 5000;
-  unsigned long alarmDuration = 10000; // Durée de l'alarme allumée en millisecondes
+  unsigned long timerDuration = 100;
+  unsigned long alarmDuration = 20000; // Durée de l'alarme allumée en millisecondes
 
-  alarm(now, reveil, timerDuration, alarmDuration);
-}
+  alarm(now, reveil, timerDuration, alarmDuration);}
