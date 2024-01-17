@@ -16,7 +16,8 @@
 #define REVEIL_BUZZER 6
 #define PM_AM_SWITCH 2
 #define REVEIL_BUTTON 8
-
+#define TRIGPIN 10
+#define ECOPIN 12
 
 unsigned long previousMinuteEdit = 0;
 
@@ -34,7 +35,17 @@ bool formatHeure24 = true; // Variable pour suivre le format d'heure
 bool lastSwitchState = LOW; // Suivre l'état précédent du bouton
 unsigned long alarmPreviousMillis = 0;
 unsigned alarmState = 0;
- int switchState = 0;
+int switchState = 0;
+unsigned long timerStartMillis = 0;
+bool timerActive = false;
+unsigned long alarmOnMillis = 0;
+int alarmPasse = 0;
+int MesureMaxi = 10; // Distance maxi a mesurer //
+int MesureMini = 3; // Distance mini a mesurer //
+long Duree;
+long Distance;
+int mainDetecte=0;
+
 
 void updateLedMatrix(DateTime time) {
   char heure[10];
@@ -72,11 +83,7 @@ void updateLedMatrix(DateTime time) {
 }
 
 void alarm(DateTime now, DateTime reveil, unsigned long timerDuration, unsigned long alarmDuration) {
-  static unsigned long timerStartMillis = 0;
-  static bool timerActive = false;
-  static unsigned long alarmOnMillis = 0;
-
-  if (!timerActive && now.hour() == reveil.hour() && now.minute() == reveil.minute()) {
+  if (!alarmPasse && !timerActive && now.hour() == reveil.hour() && now.minute() == reveil.minute()) {
     timerStartMillis = millis();
     timerActive = true;
     digitalWrite(REVEIL_BUZZER, HIGH);
@@ -89,10 +96,15 @@ void alarm(DateTime now, DateTime reveil, unsigned long timerDuration, unsigned 
   }
 
   // Éteindre l'alarme après 20 secondes
-  if (alarmState == 1 && millis() - timerStartMillis >= alarmDuration) {
+  if (alarmState == 1 && millis() - timerStartMillis >= alarmDuration && mainDetecte == 1) {
     digitalWrite(REVEIL_BUZZER, LOW);
     alarmState = 0;
     timerActive = false; // Réinitialiser l'état du minuteur
+    alarmPasse = 1;
+  }
+
+  if (millis() - timerStartMillis >= alarmDuration + 120000) {
+    alarmPasse = 0;
   }
 }
 
@@ -103,6 +115,34 @@ void toggleReveil() {
     reveilTime = DateTime(2023, 1, 8, 21, 35);
   }
 }
+
+
+int detectionMain() {
+  digitalWrite(TRIGPIN, LOW);
+  delayMicroseconds(2);
+  digitalWrite(TRIGPIN, HIGH);
+  delayMicroseconds(10);
+  digitalWrite(TRIGPIN, LOW);
+
+  // Mesure la durée de l'impulsion reçue sur la broche Echo
+  Duree = pulseIn(ECOPIN, HIGH);
+
+  // Calcule la distance en cm
+  Distance = Duree * 0.034 / 2;
+
+  if (Distance >= MesureMaxi || Distance <= MesureMini) {
+    Serial.println("Distance de mesure en dehors de la plage (3 cm à 10 cm)");
+    mainDetecte = 0;
+  } else {
+    mainDetecte = 1;
+  }
+
+  delay(1000);
+  return mainDetecte;
+}
+
+
+
 
 
 void setup() {
@@ -123,6 +163,9 @@ void setup() {
   pinMode(PM_AM_SWITCH, INPUT);
   pinMode(REVEIL_BUTTON, INPUT);
   pinMode(REVEIL_BUZZER, OUTPUT);
+  pinMode(TRIGPIN, OUTPUT); // Broche Trigger en sortie //
+  pinMode(ECOPIN, INPUT); // Broche Echo en entree //
+
 
 
   attachInterrupt(digitalPinToInterrupt(REVEIL_BUTTON), toggleReveil, RISING);
@@ -147,17 +190,22 @@ ISR(TIMER1_COMPA_vect) {
   digitalWrite(LED_SECONDE, !digitalRead(LED_SECONDE));
 }
 
-void loop() {
 
+
+void loop() {
   DateTime now = RTC.now();
-  switchState=digitalRead(PM_AM_SWITCH);
+  switchState = digitalRead(PM_AM_SWITCH);
+
   if (millis() - previousMinuteEdit >= 20000) {
     updateLedMatrix(now);
   }
 
-  DateTime reveil = DateTime(now.year(), now.month(), now.day(), 18, 31, 0);
+  detectionMain(); // Appel de la fonction de détection de main
+
+  DateTime reveil = DateTime(now.year(), now.month(), now.day(), 20, 8, 0);
 
   unsigned long timerDuration = 100;
-  unsigned long alarmDuration = 20000; // Durée de l'alarme allumée en millisecondes
+  unsigned long alarmDuration = 1000; // Durée de l'alarme allumée en millisecondes
 
-  alarm(now, reveil, timerDuration, alarmDuration);}
+  alarm(now, reveil, timerDuration, alarmDuration);
+}
